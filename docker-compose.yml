@@ -1,0 +1,66 @@
+version: '3'
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - flacjacket-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "5001:5000"
+    environment:
+      - FLASK_APP=wsgi.py
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/flacjacket
+      - DB_HOST=dejavu_db
+      - DB_USER=dejavu
+      - DB_PASSWORD=dejavu
+      - SECRET_KEY=${SECRET_KEY:-default-secret-key}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-default-jwt-secret}
+      - ACOUSTID_API_KEY=${ACOUSTID_API_KEY}
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - db
+      - dejavu_db
+    networks:
+      - flacjacket-network
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=flacjacket
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - flacjacket-network
+
+  dejavu_db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_DATABASE=dejavu
+      - MYSQL_USER=dejavu
+      - MYSQL_PASSWORD=dejavu
+      - MYSQL_ROOT_PASSWORD=root
+    volumes:
+      - dejavu_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - flacjacket-network
+
+networks:
+  flacjacket-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  dejavu_data:
