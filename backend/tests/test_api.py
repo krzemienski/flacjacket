@@ -1,6 +1,9 @@
 import json
 import pytest
 from app import create_app
+import os
+import pytest
+from werkzeug.datastructures import FileStorage
 
 @pytest.fixture
 def app():
@@ -116,3 +119,189 @@ def test_track_download_endpoint(client, auth_token):
         assert response.status_code == 200
         assert response.headers['Content-Type'].startswith('audio/')
         assert int(response.headers['Content-Length']) > 0
+
+def test_health_check(client):
+    """Test health check endpoint"""
+    response = client.get('/api/health')
+    assert response.status_code == 200
+    assert response.json['status'] == 'healthy'
+
+def test_user_registration(client):
+    """Test user registration endpoint"""
+    data = {
+        'username': 'testuser',
+        'email': 'test@example.com',
+        'password': 'securepassword123'
+    }
+    
+    response = client.post('/api/auth/register',
+                         data=json.dumps(data),
+                         content_type='application/json')
+    
+    assert response.status_code == 201
+    assert 'id' in response.json
+    assert response.json['username'] == 'testuser'
+
+def test_user_login(client):
+    """Test user login endpoint"""
+    # First register a user
+    register_data = {
+        'username': 'loginuser',
+        'email': 'login@example.com',
+        'password': 'securepassword123'
+    }
+    
+    client.post('/api/auth/register',
+               data=json.dumps(register_data),
+               content_type='application/json')
+    
+    # Now try to login
+    login_data = {
+        'username': 'loginuser',
+        'password': 'securepassword123'
+    }
+    
+    response = client.post('/api/auth/login',
+                         data=json.dumps(login_data),
+                         content_type='application/json')
+    
+    assert response.status_code == 200
+    assert 'access_token' in response.json
+    assert 'refresh_token' in response.json
+
+def test_protected_endpoint(client):
+    """Test protected endpoint access"""
+    # First register and login
+    register_data = {
+        'username': 'protecteduser',
+        'email': 'protected@example.com',
+        'password': 'securepassword123'
+    }
+    
+    client.post('/api/auth/register',
+               data=json.dumps(register_data),
+               content_type='application/json')
+    
+    login_response = client.post('/api/auth/login',
+                              data=json.dumps({
+                                  'username': 'protecteduser',
+                                  'password': 'securepassword123'
+                              }),
+                              content_type='application/json')
+    
+    token = login_response.json['access_token']
+    
+    # Try accessing protected endpoint
+    response = client.get('/api/protected',
+                        headers={'Authorization': f'Bearer {token}'})
+    
+    assert response.status_code == 200
+
+def test_upload_audio(client, tmp_path):
+    """Test audio file upload endpoint"""
+    # First register and login
+    register_data = {
+        'username': 'uploaduser',
+        'email': 'upload@example.com',
+        'password': 'securepassword123'
+    }
+    
+    client.post('/api/auth/register',
+               data=json.dumps(register_data),
+               content_type='application/json')
+    
+    login_response = client.post('/api/auth/login',
+                              data=json.dumps({
+                                  'username': 'uploaduser',
+                                  'password': 'securepassword123'
+                              }),
+                              content_type='application/json')
+    
+    token = login_response.json['access_token']
+    
+    # Create a test audio file
+    test_file_path = tmp_path / "test.flac"
+    test_file_path.write_bytes(b'dummy audio content')
+    
+    with open(test_file_path, 'rb') as f:
+        data = {
+            'file': (f, 'test.flac'),
+            'title': 'Test Song',
+            'artist': 'Test Artist'
+        }
+        response = client.post('/api/audio/upload',
+                            headers={'Authorization': f'Bearer {token}'},
+                            data=data,
+                            content_type='multipart/form-data')
+    
+    assert response.status_code == 201
+    assert 'id' in response.json
+    assert response.json['title'] == 'Test Song'
+
+def test_audio_analysis(client, tmp_path):
+    """Test audio analysis endpoint"""
+    # First register and login
+    register_data = {
+        'username': 'analysisuser',
+        'email': 'analysis@example.com',
+        'password': 'securepassword123'
+    }
+    
+    client.post('/api/auth/register',
+               data=json.dumps(register_data),
+               content_type='application/json')
+    
+    login_response = client.post('/api/auth/login',
+                              data=json.dumps({
+                                  'username': 'analysisuser',
+                                  'password': 'securepassword123'
+                              }),
+                              content_type='application/json')
+    
+    token = login_response.json['access_token']
+    
+    # Create and upload a test audio file
+    test_file_path = tmp_path / "analysis.flac"
+    test_file_path.write_bytes(b'dummy audio content')
+    
+    with open(test_file_path, 'rb') as f:
+        data = {
+            'file': (f, 'analysis.flac')
+        }
+        response = client.post('/api/audio/analyze',
+                            headers={'Authorization': f'Bearer {token}'},
+                            data=data,
+                            content_type='multipart/form-data')
+    
+    assert response.status_code == 200
+    assert 'results' in response.json
+    assert isinstance(response.json['results'], dict)
+
+def test_query_audio(client):
+    """Test audio query endpoint"""
+    # First register and login
+    register_data = {
+        'username': 'queryuser',
+        'email': 'query@example.com',
+        'password': 'securepassword123'
+    }
+    
+    client.post('/api/auth/register',
+               data=json.dumps(register_data),
+               content_type='application/json')
+    
+    login_response = client.post('/api/auth/login',
+                              data=json.dumps({
+                                  'username': 'queryuser',
+                                  'password': 'securepassword123'
+                              }),
+                              content_type='application/json')
+    
+    token = login_response.json['access_token']
+    
+    # Query audio files
+    response = client.get('/api/audio/query',
+                       headers={'Authorization': f'Bearer {token}'})
+    
+    assert response.status_code == 200
+    assert isinstance(response.json, list)

@@ -3,8 +3,6 @@ import subprocess
 import json
 import tempfile
 from datetime import datetime
-from dejavu import Dejavu
-from dejavu.logic.recognizer.file_recognizer import FileRecognizer
 import acoustid
 from flask import current_app
 import numpy as np
@@ -93,81 +91,12 @@ class AudioFingerprinter:
             log.info("acoustid_analysis_complete",
                     track_count=len(tracks))
             return tracks
-
+            
         except Exception as e:
             log.error("acoustid_analysis_failed",
                      error=str(e),
                      exc_info=True)
             raise Exception(f"AcoustID analysis failed: {str(e)}")
-            
-    def analyze_with_dejavu(self):
-        """Analyze using Dejavu"""
-        log = self.log.bind(method="dejavu")
-        log.info("starting_dejavu_analysis")
-        
-        try:
-            # Initialize Dejavu with MySQL configuration
-            config = {
-                "database": {
-                    "host": current_app.config['DB_HOST'],
-                    "user": current_app.config['DB_USER'],
-                    "password": current_app.config['DB_PASSWORD'],
-                    "database": "dejavu"
-                }
-            }
-            
-            log.debug("initializing_dejavu", config=config)
-            djv = Dejavu(config)
-            
-            # Split audio into 30-second chunks for analysis
-            chunk_size = 30  # seconds
-            audio = AudioSegment.from_file(self.file_path)
-            
-            tracks = []
-            for i in range(0, len(audio), chunk_size * 1000):
-                chunk = audio[i:i + chunk_size * 1000]
-                
-                # Save chunk to temporary file
-                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                    log.debug("analyzing_chunk",
-                             chunk_start=i/1000,
-                             chunk_end=(i + chunk_size * 1000)/1000,
-                             temp_file=temp_file.name)
-                    
-                    chunk.export(temp_file.name, format='wav')
-                    
-                    # Recognize the chunk
-                    results = djv.recognize(FileRecognizer, temp_file.name)
-                    
-                    if results is not None and results["confidence"] > 50:
-                        track = {
-                            'title': results["song_name"],
-                            'start_time': i / 1000,  # Convert ms to seconds
-                            'end_time': min((i + chunk_size * 1000) / 1000, self.duration),
-                            'confidence': results["confidence"] / 100,
-                            'method': 'dejavu',
-                            'metadata': {
-                                'dejavu_confidence': results["confidence"]
-                            }
-                        }
-                        
-                        log.info("track_identified",
-                                title=results["song_name"],
-                                confidence=results["confidence"])
-                        
-                        tracks.append(track)
-                        
-                    os.unlink(temp_file.name)
-            
-            log.info("dejavu_analysis_complete",
-                    track_count=len(tracks))
-            return tracks
-            
-        except Exception as e:
-            log.error("dejavu_analysis_failed",
-                     error=str(e),
-                     exc_info=True)
-            raise Exception(f"Dejavu analysis failed: {str(e)}")
             
     def analyze_with_audfprint(self):
         """Analyze using audfprint"""
@@ -182,7 +111,7 @@ class AudioFingerprinter:
             # Load the reference database
             db_path = current_app.config['AUDFPRINT_DB_PATH']
             log.debug("loading_database", db_path=db_path)
-            analyzer.load(db_path)
+            analyzer.load_fingerprint_database(db_path)
             
             # Split audio into chunks for analysis
             chunk_size = 30  # seconds
@@ -209,7 +138,7 @@ class AudioFingerprinter:
                             'title': results[1],  # Track name from reference database
                             'start_time': i / 1000,  # Convert ms to seconds
                             'end_time': min((i + chunk_size * 1000) / 1000, self.duration),
-                            'confidence': results[0] / 100,  # Normalize score to 0-1
+                            'confidence': results[0] / 100,  # Normalize to 0-1
                             'method': 'audfprint',
                             'metadata': {
                                 'audfprint_score': results[0]
@@ -237,11 +166,9 @@ class AudioFingerprinter:
     def analyze_all_methods(self):
         """Run analysis with all available methods"""
         log = self.log.bind(operation="analyze_all_methods")
-        log.info("starting_full_analysis")
         
         results = {
             'acoustid': [],
-            'dejavu': [],
             'audfprint': []
         }
         
@@ -250,12 +177,6 @@ class AudioFingerprinter:
             results['acoustid'] = self.analyze_with_acoustid()
         except Exception as e:
             log.error("acoustid_failed", error=str(e))
-            
-        try:
-            log.info("running_dejavu")
-            results['dejavu'] = self.analyze_with_dejavu()
-        except Exception as e:
-            log.error("dejavu_failed", error=str(e))
             
         try:
             log.info("running_audfprint")

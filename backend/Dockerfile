@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     libchromaprint-dev \
     gcc \
     git \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,9 +20,12 @@ RUN git clone https://github.com/dpwe/audfprint.git /tmp/audfprint \
     && cd / \
     && rm -rf /tmp/audfprint
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements and setup files first for better caching
+COPY requirements.txt setup.py ./
+
+# Install dependencies and package
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install -e .
 
 # Copy the rest of the application
 COPY . .
@@ -31,11 +35,8 @@ RUN mkdir -p uploads
 
 # Set environment variables
 ENV FLASK_APP=app
-ENV FLASK_ENV=production
-ENV PYTHONUNBUFFERED=1
+ENV FLASK_ENV=development
+ENV PYTHONPATH=/app
 
-# Expose port
-EXPOSE 5000
-
-# Run gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "wsgi:app"]
+# Command to run tests
+CMD ["pytest", "-v", "tests/"]
