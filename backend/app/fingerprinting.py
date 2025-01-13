@@ -5,16 +5,14 @@ import tempfile
 from datetime import datetime
 import acoustid
 from flask import current_app
-import numpy as np
 from pydub import AudioSegment
-import audfprint
 import structlog
 
 # Get logger
 logger = structlog.get_logger("flacjacket.analysis")
 
 class AudioFingerprinter:
-    """Class to handle multiple fingerprinting methods"""
+    """Class to handle audio fingerprinting using AcoustID"""
     
     def __init__(self, file_path):
         self.file_path = file_path
@@ -98,99 +96,22 @@ class AudioFingerprinter:
                      exc_info=True)
             raise Exception(f"AcoustID analysis failed: {str(e)}")
             
-    def analyze_with_audfprint(self):
-        """Analyze using audfprint"""
-        log = self.log.bind(method="audfprint")
-        log.info("starting_audfprint_analysis")
+    def analyze_all_methods(self):
+        """Run analysis with AcoustID"""
+        log = self.log.bind(action="analyze_all")
+        log.info("starting_analysis")
         
         try:
-            # Initialize audfprint
-            log.debug("initializing_audfprint")
-            analyzer = audfprint.Analyzer()
+            # Only use AcoustID for analysis
+            tracks = self.analyze_with_acoustid()
             
-            # Load the reference database
-            db_path = current_app.config['AUDFPRINT_DB_PATH']
-            log.debug("loading_database", db_path=db_path)
-            analyzer.load_fingerprint_database(db_path)
-            
-            # Split audio into chunks for analysis
-            chunk_size = 30  # seconds
-            audio = AudioSegment.from_file(self.file_path)
-            
-            tracks = []
-            for i in range(0, len(audio), chunk_size * 1000):
-                chunk = audio[i:i + chunk_size * 1000]
-                
-                # Save chunk to temporary file
-                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
-                    log.debug("analyzing_chunk",
-                             chunk_start=i/1000,
-                             chunk_end=(i + chunk_size * 1000)/1000,
-                             temp_file=temp_file.name)
-                    
-                    chunk.export(temp_file.name, format='wav')
-                    
-                    # Analyze the chunk
-                    results = analyzer.match_file(temp_file.name)
-                    
-                    if results is not None and results[0] > 0:  # If matches found
-                        track = {
-                            'title': results[1],  # Track name from reference database
-                            'start_time': i / 1000,  # Convert ms to seconds
-                            'end_time': min((i + chunk_size * 1000) / 1000, self.duration),
-                            'confidence': results[0] / 100,  # Normalize to 0-1
-                            'method': 'audfprint',
-                            'metadata': {
-                                'audfprint_score': results[0]
-                            }
-                        }
-                        
-                        log.info("track_identified",
-                                title=results[1],
-                                confidence=results[0]/100)
-                        
-                        tracks.append(track)
-                        
-                    os.unlink(temp_file.name)
-            
-            log.info("audfprint_analysis_complete",
+            log.info("analysis_complete",
                     track_count=len(tracks))
+            
             return tracks
             
         except Exception as e:
-            log.error("audfprint_analysis_failed",
+            log.error("analysis_failed",
                      error=str(e),
                      exc_info=True)
-            raise Exception(f"audfprint analysis failed: {str(e)}")
-            
-    def analyze_all_methods(self):
-        """Run analysis with all available methods"""
-        log = self.log.bind(operation="analyze_all_methods")
-        
-        results = {
-            'acoustid': [],
-            'audfprint': []
-        }
-        
-        try:
-            log.info("running_acoustid")
-            results['acoustid'] = self.analyze_with_acoustid()
-        except Exception as e:
-            log.error("acoustid_failed", error=str(e))
-            
-        try:
-            log.info("running_audfprint")
-            results['audfprint'] = self.analyze_with_audfprint()
-        except Exception as e:
-            log.error("audfprint_failed", error=str(e))
-            
-        # Log summary of results
-        summary = {
-            method: len(tracks)
-            for method, tracks in results.items()
-        }
-        log.info("analysis_complete",
-                total_tracks=sum(summary.values()),
-                tracks_by_method=summary)
-            
-        return results
+            raise

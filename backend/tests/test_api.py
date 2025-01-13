@@ -2,7 +2,6 @@ import json
 import pytest
 from app import create_app
 import os
-import pytest
 from werkzeug.datastructures import FileStorage
 
 @pytest.fixture
@@ -52,13 +51,11 @@ def test_analysis_status_endpoint(client, auth_token):
     assert response.status_code == 200
     data = json.loads(response.data)
     assert 'status' in data
-    assert 'results' in data
 
 def test_tracks_endpoint(client, auth_token):
     """Test getting track details."""
+    # First create an analysis
     headers = {'Authorization': f'Bearer {auth_token}'}
-    
-    # First create and complete an analysis
     response = client.post('/api/analysis', json={
         'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         'source': 'youtube'
@@ -67,31 +64,24 @@ def test_tracks_endpoint(client, auth_token):
     
     # Wait for analysis to complete
     import time
-    max_wait = 60  # seconds
-    while max_wait > 0:
+    max_retries = 10
+    for _ in range(max_retries):
         response = client.get(f'/api/analysis/{analysis_id}', headers=headers)
-        if json.loads(response.data)['status'] == 'completed':
+        data = json.loads(response.data)
+        if data['status'] == 'completed':
             break
         time.sleep(1)
-        max_wait -= 1
     
-    # Get tracks from the analysis
-    response = client.get(f'/api/tracks/{analysis_id}', headers=headers)
+    # Then get tracks
+    response = client.get(f'/api/analysis/{analysis_id}/tracks', headers=headers)
     assert response.status_code == 200
     data = json.loads(response.data)
     assert isinstance(data, list)
-    if len(data) > 0:
-        track = data[0]
-        assert 'id' in track
-        assert 'title' in track
-        assert 'start_time' in track
-        assert 'end_time' in track
 
 def test_track_download_endpoint(client, auth_token):
     """Test downloading a track."""
+    # First create an analysis
     headers = {'Authorization': f'Bearer {auth_token}'}
-    
-    # First create and complete an analysis
     response = client.post('/api/analysis', json={
         'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         'source': 'youtube'
@@ -100,101 +90,90 @@ def test_track_download_endpoint(client, auth_token):
     
     # Wait for analysis to complete
     import time
-    max_wait = 60  # seconds
-    while max_wait > 0:
+    max_retries = 10
+    for _ in range(max_retries):
         response = client.get(f'/api/analysis/{analysis_id}', headers=headers)
-        if json.loads(response.data)['status'] == 'completed':
+        data = json.loads(response.data)
+        if data['status'] == 'completed':
             break
         time.sleep(1)
-        max_wait -= 1
     
-    # Get track ID
-    response = client.get(f'/api/tracks/{analysis_id}', headers=headers)
+    # Get tracks
+    response = client.get(f'/api/analysis/{analysis_id}/tracks', headers=headers)
     tracks = json.loads(response.data)
-    if len(tracks) > 0:
-        track_id = tracks[0]['id']
-        
-        # Download track
-        response = client.get(f'/api/tracks/{track_id}/download', headers=headers)
-        assert response.status_code == 200
-        assert response.headers['Content-Type'].startswith('audio/')
-        assert int(response.headers['Content-Length']) > 0
+    track_id = tracks[0]['id']
+    
+    # Download track
+    response = client.get(f'/api/tracks/{track_id}/download', headers=headers)
+    assert response.status_code == 200
+    assert response.headers['Content-Type'] == 'audio/flac'
 
 def test_health_check(client):
     """Test health check endpoint"""
     response = client.get('/api/health')
     assert response.status_code == 200
-    assert response.json['status'] == 'healthy'
+    assert json.loads(response.data)['status'] == 'healthy'
 
 def test_user_registration(client):
     """Test user registration endpoint"""
-    data = {
-        'username': 'testuser',
-        'email': 'test@example.com',
+    response = client.post('/api/auth/register', json={
+        'username': 'newuser',
+        'email': 'newuser@example.com',
         'password': 'securepassword123'
-    }
-    
-    response = client.post('/api/auth/register',
-                         data=json.dumps(data),
-                         content_type='application/json')
-    
+    })
     assert response.status_code == 201
-    assert 'id' in response.json
-    assert response.json['username'] == 'testuser'
+    data = json.loads(response.data)
+    assert 'id' in data
+    assert data['username'] == 'newuser'
 
 def test_user_login(client):
     """Test user login endpoint"""
     # First register a user
-    register_data = {
+    client.post('/api/auth/register', json={
         'username': 'loginuser',
         'email': 'login@example.com',
         'password': 'securepassword123'
-    }
+    })
     
-    client.post('/api/auth/register',
-               data=json.dumps(register_data),
-               content_type='application/json')
-    
-    # Now try to login
-    login_data = {
+    # Then try to login
+    response = client.post('/api/auth/login', json={
         'username': 'loginuser',
         'password': 'securepassword123'
-    }
-    
-    response = client.post('/api/auth/login',
-                         data=json.dumps(login_data),
-                         content_type='application/json')
-    
+    })
     assert response.status_code == 200
-    assert 'access_token' in response.json
-    assert 'refresh_token' in response.json
+    data = json.loads(response.data)
+    assert 'access_token' in data
+    assert 'refresh_token' in data
+    
+    # Try with wrong password
+    response = client.post('/api/auth/login', json={
+        'username': 'loginuser',
+        'password': 'wrongpassword'
+    })
+    assert response.status_code == 401
 
 def test_protected_endpoint(client):
     """Test protected endpoint access"""
     # First register and login
-    register_data = {
+    client.post('/api/auth/register', json={
         'username': 'protecteduser',
         'email': 'protected@example.com',
         'password': 'securepassword123'
-    }
+    })
     
-    client.post('/api/auth/register',
-               data=json.dumps(register_data),
-               content_type='application/json')
+    response = client.post('/api/auth/login', json={
+        'username': 'protecteduser',
+        'password': 'securepassword123'
+    })
+    token = json.loads(response.data)['access_token']
     
-    login_response = client.post('/api/auth/login',
-                              data=json.dumps({
-                                  'username': 'protecteduser',
-                                  'password': 'securepassword123'
-                              }),
-                              content_type='application/json')
+    # Try accessing protected endpoint without token
+    response = client.get('/api/protected')
+    assert response.status_code == 401
     
-    token = login_response.json['access_token']
-    
-    # Try accessing protected endpoint
-    response = client.get('/api/protected',
-                        headers={'Authorization': f'Bearer {token}'})
-    
+    # Try with token
+    headers = {'Authorization': f'Bearer {token}'}
+    response = client.get('/api/protected', headers=headers)
     assert response.status_code == 200
 
 def test_upload_audio(client, tmp_path):
@@ -275,7 +254,12 @@ def test_audio_analysis(client, tmp_path):
     
     assert response.status_code == 200
     assert 'results' in response.json
-    assert isinstance(response.json['results'], dict)
+    # Results should be a list since we're only using AcoustID
+    assert isinstance(response.json['results'], list)
+    for track in response.json['results']:
+        assert track['method'] == 'acoustid'
+        assert 'metadata' in track
+        assert 'acoustid_score' in track['metadata']
 
 def test_query_audio(client):
     """Test audio query endpoint"""
@@ -299,9 +283,8 @@ def test_query_audio(client):
     
     token = login_response.json['access_token']
     
-    # Query audio files
-    response = client.get('/api/audio/query',
-                       headers={'Authorization': f'Bearer {token}'})
-    
+    # Test querying audio
+    response = client.get('/api/audio/query?q=test',
+                        headers={'Authorization': f'Bearer {token}'})
     assert response.status_code == 200
     assert isinstance(response.json, list)

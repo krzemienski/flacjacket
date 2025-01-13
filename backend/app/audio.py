@@ -114,7 +114,7 @@ def download_audio(url, source_type):
         raise Exception(f"Download failed: {str(e)}")
 
 def analyze_audio(file_path):
-    """Analyze audio file using multiple fingerprinting methods"""
+    """Analyze audio file using AcoustID fingerprinting"""
     log = analysis_logger.bind(
         file_path=file_path,
         operation="analyze_audio"
@@ -130,51 +130,18 @@ def analyze_audio(file_path):
         # Initialize fingerprinter
         fingerprinter = AudioFingerprinter(file_path)
         
-        # Run analysis with each method
-        results = {}
-        
-        # AcoustID analysis
+        # Run analysis with AcoustID
         log.info("starting_acoustid_analysis")
         try:
-            results['acoustid'] = fingerprinter.analyze_with_acoustid()
+            results = fingerprinter.analyze_with_acoustid()
             log.info("acoustid_analysis_complete",
-                    track_count=len(results['acoustid']))
+                    track_count=len(results))
+            return results
         except Exception as e:
             log.error("acoustid_analysis_failed",
                      error=str(e),
                      exc_info=True)
-        
-        # Dejavu analysis
-        log.info("starting_dejavu_analysis")
-        try:
-            results['dejavu'] = fingerprinter.analyze_with_dejavu()
-            log.info("dejavu_analysis_complete",
-                    track_count=len(results['dejavu']))
-        except Exception as e:
-            log.error("dejavu_analysis_failed",
-                     error=str(e),
-                     exc_info=True)
-        
-        # audfprint analysis
-        log.info("starting_audfprint_analysis")
-        try:
-            results['audfprint'] = fingerprinter.analyze_with_audfprint()
-            log.info("audfprint_analysis_complete",
-                    track_count=len(results['audfprint']))
-        except Exception as e:
-            log.error("audfprint_analysis_failed",
-                     error=str(e),
-                     exc_info=True)
-        
-        # Log overall results
-        total_tracks = sum(len(tracks) for tracks in results.values())
-        log.info("analysis_complete",
-                status="success",
-                total_tracks=total_tracks,
-                results_by_method={method: len(tracks) 
-                                 for method, tracks in results.items()})
-        
-        return results
+            raise
         
     except Exception as e:
         log.error("analysis_failed",

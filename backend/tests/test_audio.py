@@ -1,7 +1,7 @@
 import os
 import pytest
 from app.fingerprinting import AudioFingerprinter
-from app.models import Audio
+from app.models import Track, Analysis
 from app.extensions import db
 from app import create_app
 
@@ -30,42 +30,48 @@ def test_audio_duration(tmp_path):
     fingerprinter = AudioFingerprinter(str(test_file))
     assert fingerprinter.duration == pytest.approx(5.0, rel=0.1)
 
-def test_audfprint_analysis(tmp_path):
-    """Test audfprint analysis"""
+def test_acoustid_analysis(tmp_path):
+    """Test AcoustID analysis"""
     # Create a real audio file using ffmpeg
     test_file = tmp_path / "test.flac"
     os.system(f'ffmpeg -f lavfi -i "sine=frequency=1000:duration=5" {test_file}')
     
     fingerprinter = AudioFingerprinter(str(test_file))
-    results = fingerprinter.analyze_with_audfprint()
+    results = fingerprinter.analyze_with_acoustid()
     
     assert isinstance(results, list)
+    for track in results:
+        assert 'title' in track
+        assert 'artist' in track
+        assert 'start_time' in track
+        assert 'end_time' in track
+        assert 'confidence' in track
+        assert track['method'] == 'acoustid'
+        assert 'metadata' in track
+        assert 'acoustid_score' in track['metadata']
 
-def test_audio_model(app):
-    """Test Audio model"""
-    audio = Audio(
+def test_track_model(app):
+    """Test Track model"""
+    track = Track(
         title='Test Song',
         artist='Test Artist',
-        filename='test.flac',
-        user_id=1
+        start_time=0.0,
+        end_time=5.0,
+        confidence=0.8,
+        fingerprint_method='acoustid',
+        recognition_metadata={'acoustid_score': 0.8}
     )
     
-    db.session.add(audio)
-    db.session.commit()
-    
-    assert audio.id is not None
-    assert audio.title == 'Test Song'
-    assert audio.artist == 'Test Artist'
-    assert audio.filename == 'test.flac'
-    assert audio.user_id == 1
-    assert audio.created_at is not None
-    
-    # Test relationships
-    assert hasattr(audio, 'user')
-    assert hasattr(audio, 'fingerprints')
+    assert track.title == 'Test Song'
+    assert track.artist == 'Test Artist'
+    assert track.start_time == 0.0
+    assert track.end_time == 5.0
+    assert track.confidence == 0.8
+    assert track.fingerprint_method == 'acoustid'
+    assert track.recognition_metadata['acoustid_score'] == 0.8
 
 def test_audio_fingerprint_methods(tmp_path):
-    """Test all fingerprinting methods"""
+    """Test all fingerprinting methods (only AcoustID)"""
     # Create a real audio file using ffmpeg
     test_file = tmp_path / "test.flac"
     os.system(f'ffmpeg -f lavfi -i "sine=frequency=1000:duration=5" {test_file}')
@@ -73,9 +79,13 @@ def test_audio_fingerprint_methods(tmp_path):
     fingerprinter = AudioFingerprinter(str(test_file))
     results = fingerprinter.analyze_all_methods()
     
-    assert isinstance(results, dict)
-    assert 'audfprint' in results
-    assert isinstance(results['audfprint'], list)
-    
-    # Note: We're not testing acoustid here since it requires an API key
-    # and dejavu since it requires a MySQL database
+    assert isinstance(results, list)
+    for track in results:
+        assert 'title' in track
+        assert 'artist' in track
+        assert 'start_time' in track
+        assert 'end_time' in track
+        assert 'confidence' in track
+        assert track['method'] == 'acoustid'
+        assert 'metadata' in track
+        assert 'acoustid_score' in track['metadata']

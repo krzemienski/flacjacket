@@ -12,22 +12,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install audfprint from source
-RUN git clone https://github.com/dpwe/audfprint.git /tmp/audfprint \
-    && cd /tmp/audfprint \
-    && python -c "import shutil; shutil.copy('audfprint.py', '/usr/local/bin/audfprint'); shutil.copy('audfprint_analyze.py', '/usr/local/lib/python3.11/site-packages/audfprint_analyze.py'); shutil.copy('audfprint_match.py', '/usr/local/lib/python3.11/site-packages/audfprint_match.py')" \
-    && chmod +x /usr/local/bin/audfprint \
-    && cd / \
-    && rm -rf /tmp/audfprint
-
-# Copy requirements and setup files first for better caching
+# Copy requirements and setup files
 COPY requirements.txt setup.py ./
 
-# Install dependencies and package
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install -e .
 
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
 # Create uploads directory

@@ -28,7 +28,7 @@ analysis_input = api.model('AnalysisInput', {
 analysis_output = api.model('AnalysisOutput', {
     'id': fields.Integer(required=True, description='Analysis ID'),
     'status': fields.String(required=True, description='Analysis status'),
-    'results': fields.Raw(description='Analysis results by fingerprinting method')
+    'results': fields.List(fields.Nested(track_model), description='Analysis results')
 })
 
 @api.route('')
@@ -54,29 +54,28 @@ class AnalysisResource(Resource):
             analysis.file_path = file_path
             db.session.commit()
             
-            # Analyze with multiple fingerprinting methods
+            # Analyze with AcoustID
             results = analyze_audio(file_path)
             
-            # Store tracks for each method
-            for method, tracks in results.items():
-                for track_data in tracks:
-                    # Extract the track segment
-                    track_file = extract_track(file_path, track_data['start_time'], 
-                                            track_data['end_time'] - track_data['start_time'])
-                    
-                    # Create track record
-                    track = Track(
-                        analysis_id=analysis.id,
-                        track_name=track_data.get('title'),
-                        artist=track_data.get('artist'),
-                        start_time=track_data['start_time'],
-                        end_time=track_data['end_time'],
-                        confidence=track_data['confidence'],
-                        download_path=track_file,
-                        fingerprint_method=method,
-                        metadata=track_data.get('metadata', {})
-                    )
-                    db.session.add(track)
+            # Store tracks
+            for track_data in results:
+                # Extract the track segment
+                track_file = extract_track(file_path, track_data['start_time'], 
+                                        track_data['end_time'] - track_data['start_time'])
+                
+                # Create track record
+                track = Track(
+                    analysis_id=analysis.id,
+                    track_name=track_data.get('title'),
+                    artist=track_data.get('artist'),
+                    start_time=track_data['start_time'],
+                    end_time=track_data['end_time'],
+                    confidence=track_data['confidence'],
+                    download_path=track_file,
+                    fingerprint_method='acoustid',
+                    metadata=track_data.get('metadata', {})
+                )
+                db.session.add(track)
             
             analysis.status = 'completed'
             db.session.commit()
@@ -84,10 +83,7 @@ class AnalysisResource(Resource):
             return {
                 'id': analysis.id,
                 'status': 'completed',
-                'results': {
-                    method: [track.to_dict() for track in analysis.tracks if track.fingerprint_method == method]
-                    for method in results.keys()
-                }
+                'results': [track.to_dict() for track in analysis.tracks]
             }
             
         except Exception as e:
@@ -107,18 +103,10 @@ class AnalysisDetailResource(Resource):
         """Get analysis results by ID"""
         analysis = Analysis.query.get_or_404(analysis_id)
         
-        # Group tracks by fingerprinting method
-        tracks_by_method = {}
-        for track in analysis.tracks:
-            method = track.fingerprint_method
-            if method not in tracks_by_method:
-                tracks_by_method[method] = []
-            tracks_by_method[method].append(track.to_dict())
-        
         return {
             'id': analysis.id,
             'status': analysis.status,
-            'results': tracks_by_method
+            'results': [track.to_dict() for track in analysis.tracks]
         }
 
 @api.route('/<int:analysis_id>/rerun')
@@ -138,29 +126,28 @@ class AnalysisRerunResource(Resource):
             # Delete existing tracks
             Track.query.filter_by(analysis_id=analysis.id).delete()
             
-            # Re-analyze with multiple fingerprinting methods
+            # Re-analyze with AcoustID
             results = analyze_audio(analysis.file_path)
             
             # Store new tracks
-            for method, tracks in results.items():
-                for track_data in tracks:
-                    # Extract the track segment
-                    track_file = extract_track(analysis.file_path, track_data['start_time'], 
-                                            track_data['end_time'] - track_data['start_time'])
-                    
-                    # Create track record
-                    track = Track(
-                        analysis_id=analysis.id,
-                        track_name=track_data.get('title'),
-                        artist=track_data.get('artist'),
-                        start_time=track_data['start_time'],
-                        end_time=track_data['end_time'],
-                        confidence=track_data['confidence'],
-                        download_path=track_file,
-                        fingerprint_method=method,
-                        metadata=track_data.get('metadata', {})
-                    )
-                    db.session.add(track)
+            for track_data in results:
+                # Extract the track segment
+                track_file = extract_track(analysis.file_path, track_data['start_time'], 
+                                        track_data['end_time'] - track_data['start_time'])
+                
+                # Create track record
+                track = Track(
+                    analysis_id=analysis.id,
+                    track_name=track_data.get('title'),
+                    artist=track_data.get('artist'),
+                    start_time=track_data['start_time'],
+                    end_time=track_data['end_time'],
+                    confidence=track_data['confidence'],
+                    download_path=track_file,
+                    fingerprint_method='acoustid',
+                    metadata=track_data.get('metadata', {})
+                )
+                db.session.add(track)
             
             analysis.status = 'completed'
             analysis.error = None
@@ -169,10 +156,7 @@ class AnalysisRerunResource(Resource):
             return {
                 'id': analysis.id,
                 'status': 'completed',
-                'results': {
-                    method: [track.to_dict() for track in analysis.tracks if track.fingerprint_method == method]
-                    for method in results.keys()
-                }
+                'results': [track.to_dict() for track in analysis.tracks]
             }
             
         except Exception as e:

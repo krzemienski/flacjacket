@@ -1,0 +1,7 @@
+Flask
+SQLAlchemy
+Flask-Migrate
+Dejavu
+psycopg2-binary
+yt-dlp
+ffmpeg-python

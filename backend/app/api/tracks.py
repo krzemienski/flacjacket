@@ -41,11 +41,11 @@ class TrackDownloadResource(Resource):
         if not track.download_path or not os.path.exists(track.download_path):
             api.abort(404, 'Track file not found')
         
-        # Generate filename with fingerprinting method
+        # Generate filename
         filename = f"{track.track_name}"
         if track.artist:
             filename = f"{track.artist} - {filename}"
-        filename = f"{filename} [{track.fingerprint_method}].flac"
+        filename = f"{filename}.flac"
         
         return send_file(
             track.download_path,
