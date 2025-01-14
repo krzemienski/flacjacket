@@ -1,66 +1,62 @@
-version: '3'
+version: '3.8'
 
 services:
-  frontend:
-    build: ./frontend
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: flacjacket
+      POSTGRES_USER: flacjacket
+      POSTGRES_PASSWORD: flacjacket
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "80:80"
-    depends_on:
-      - backend
-    networks:
-      - flacjacket-network
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
   backend:
     build: ./backend
+    environment:
+      FLASK_APP: app
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
     ports:
       - "5001:5000"
-    environment:
-      - FLASK_APP=wsgi.py
-      - FLASK_ENV=development
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/flacjacket
-      - DB_HOST=dejavu_db
-      - DB_USER=dejavu
-      - DB_PASSWORD=dejavu
-      - SECRET_KEY=${SECRET_KEY:-default-secret-key}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-default-jwt-secret}
-      - ACOUSTID_API_KEY=${ACOUSTID_API_KEY}
-    volumes:
-      - ./backend/uploads:/app/uploads
     depends_on:
-      - db
-      - dejavu_db
-    networks:
-      - flacjacket-network
+      - postgres
+      - redis
 
-  db:
-    image: postgres:15-alpine
+  celery_worker:
+    build: ./backend
+    command: celery -A app.celery worker --loglevel=info
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=flacjacket
+      DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - flacjacket-network
+      - ./backend:/app
+      - backend_uploads:/app/uploads
+    depends_on:
+      - postgres
+      - redis
 
-  dejavu_db:
-    image: mysql:8.0
+  frontend:
+    build: ./frontend
     environment:
-      - MYSQL_DATABASE=dejavu
-      - MYSQL_USER=dejavu
-      - MYSQL_PASSWORD=dejavu
-      - MYSQL_ROOT_PASSWORD=root
-    volumes:
-      - dejavu_data:/var/lib/mysql
+      NEXT_PUBLIC_API_URL: http://localhost:5001
     ports:
-      - "3306:3306"
-    networks:
-      - flacjacket-network
-
-networks:
-  flacjacket-network:
-    driver: bridge
+      - "3003:3000"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
-  dejavu_data:
+  backend_uploads:

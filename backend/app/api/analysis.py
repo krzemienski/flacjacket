@@ -1,166 +1,41 @@
-from flask import request, current_app
-from flask_jwt_extended import jwt_required
-from flask_restx import Namespace, Resource, fields
-from ..models import db, Analysis, Track
-from ..audio import download_audio, analyze_audio, extract_track
-import os
+from flask import jsonify, request
+from . import bp
+from ..models import Analysis, db
+from ..tasks import process_audio_url
 
-api = Namespace('analysis', description='Audio analysis operations')
+@bp.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'message': 'FlacJacket API is running'}), 200
 
-# API Models
-track_model = api.model('Track', {
-    'id': fields.Integer(required=True, description='Track ID'),
-    'track_name': fields.String(description='Track name'),
-    'artist': fields.String(description='Artist name'),
-    'start_time': fields.Float(description='Start time in seconds'),
-    'end_time': fields.Float(description='End time in seconds'),
-    'confidence': fields.Float(description='Confidence score (0-1)'),
-    'fingerprint_method': fields.String(description='Method used for fingerprinting'),
-    'metadata': fields.Raw(description='Additional metadata')
-})
+@bp.route('/analysis', methods=['POST'])
+def start_analysis():
+    data = request.get_json()
+    if not data or 'url' not in data:
+        return jsonify({'error': 'URL is required'}), 400
+    
+    url = data['url']
+    analysis = Analysis(url=url)
+    db.session.add(analysis)
+    db.session.commit()
+    
+    # Start async task
+    process_audio_url.delay(analysis.id)
+    
+    return jsonify(analysis.to_dict()), 202
 
-analysis_input = api.model('AnalysisInput', {
-    'url': fields.String(required=True, description='URL of audio file to analyze'),
-    'source': fields.String(required=False, default='youtube', enum=['youtube', 'soundcloud'], 
-                          description='Source type (youtube or soundcloud)')
-})
+@bp.route('/analysis/<int:analysis_id>', methods=['GET'])
+def get_analysis(analysis_id):
+    analysis = Analysis.query.get_or_404(analysis_id)
+    return jsonify(analysis.to_dict())
 
-analysis_output = api.model('AnalysisOutput', {
-    'id': fields.Integer(required=True, description='Analysis ID'),
-    'status': fields.String(required=True, description='Analysis status'),
-    'results': fields.List(fields.Nested(track_model), description='Analysis results')
-})
+@bp.route('/analyses', methods=['GET'])
+def list_analyses():
+    analyses = Analysis.query.order_by(Analysis.created_at.desc()).all()
+    return jsonify({'analyses': [analysis.to_dict() for analysis in analyses]})
 
-@api.route('')
-class AnalysisResource(Resource):
-    @api.doc('create_analysis')
-    @api.expect(analysis_input)
-    @api.marshal_with(analysis_output)
-    @jwt_required()
-    def post(self):
-        """Start a new analysis job"""
-        data = request.get_json()
-        url = data['url']
-        source_type = data.get('source', 'youtube')
-        
-        try:
-            # Create new analysis record
-            analysis = Analysis(url=url, source=source_type, status='in_progress')
-            db.session.add(analysis)
-            db.session.commit()
-            
-            # Download the audio file
-            file_path = download_audio(url, source_type)
-            analysis.file_path = file_path
-            db.session.commit()
-            
-            # Analyze with AcoustID
-            results = analyze_audio(file_path)
-            
-            # Store tracks
-            for track_data in results:
-                # Extract the track segment
-                track_file = extract_track(file_path, track_data['start_time'], 
-                                        track_data['end_time'] - track_data['start_time'])
-                
-                # Create track record
-                track = Track(
-                    analysis_id=analysis.id,
-                    track_name=track_data.get('title'),
-                    artist=track_data.get('artist'),
-                    start_time=track_data['start_time'],
-                    end_time=track_data['end_time'],
-                    confidence=track_data['confidence'],
-                    download_path=track_file,
-                    fingerprint_method='acoustid',
-                    metadata=track_data.get('metadata', {})
-                )
-                db.session.add(track)
-            
-            analysis.status = 'completed'
-            db.session.commit()
-            
-            return {
-                'id': analysis.id,
-                'status': 'completed',
-                'results': [track.to_dict() for track in analysis.tracks]
-            }
-            
-        except Exception as e:
-            if analysis:
-                analysis.status = 'failed'
-                analysis.error = str(e)
-                db.session.commit()
-            api.abort(500, str(e))
-
-@api.route('/<int:analysis_id>')
-@api.param('analysis_id', 'The analysis identifier')
-class AnalysisDetailResource(Resource):
-    @api.doc('get_analysis')
-    @api.marshal_with(analysis_output)
-    @jwt_required()
-    def get(self, analysis_id):
-        """Get analysis results by ID"""
-        analysis = Analysis.query.get_or_404(analysis_id)
-        
-        return {
-            'id': analysis.id,
-            'status': analysis.status,
-            'results': [track.to_dict() for track in analysis.tracks]
-        }
-
-@api.route('/<int:analysis_id>/rerun')
-@api.param('analysis_id', 'The analysis identifier')
-class AnalysisRerunResource(Resource):
-    @api.doc('rerun_analysis')
-    @api.marshal_with(analysis_output)
-    @jwt_required()
-    def post(self, analysis_id):
-        """Re-run analysis on an existing file"""
-        analysis = Analysis.query.get_or_404(analysis_id)
-        
-        if not analysis.file_path or not os.path.exists(analysis.file_path):
-            api.abort(404, 'Audio file not found')
-            
-        try:
-            # Delete existing tracks
-            Track.query.filter_by(analysis_id=analysis.id).delete()
-            
-            # Re-analyze with AcoustID
-            results = analyze_audio(analysis.file_path)
-            
-            # Store new tracks
-            for track_data in results:
-                # Extract the track segment
-                track_file = extract_track(analysis.file_path, track_data['start_time'], 
-                                        track_data['end_time'] - track_data['start_time'])
-                
-                # Create track record
-                track = Track(
-                    analysis_id=analysis.id,
-                    track_name=track_data.get('title'),
-                    artist=track_data.get('artist'),
-                    start_time=track_data['start_time'],
-                    end_time=track_data['end_time'],
-                    confidence=track_data['confidence'],
-                    download_path=track_file,
-                    fingerprint_method='acoustid',
-                    metadata=track_data.get('metadata', {})
-                )
-                db.session.add(track)
-            
-            analysis.status = 'completed'
-            analysis.error = None
-            db.session.commit()
-            
-            return {
-                'id': analysis.id,
-                'status': 'completed',
-                'results': [track.to_dict() for track in analysis.tracks]
-            }
-            
-        except Exception as e:
-            analysis.status = 'failed'
-            analysis.error = str(e)
-            db.session.commit()
-            api.abort(500, str(e))
+@bp.route('/analysis/<int:analysis_id>', methods=['DELETE'])
+def delete_analysis(analysis_id):
+    analysis = Analysis.query.get_or_404(analysis_id)
+    db.session.delete(analysis)
+    db.session.commit()
+    return jsonify({'status': 'success', 'message': 'Analysis deleted successfully'})

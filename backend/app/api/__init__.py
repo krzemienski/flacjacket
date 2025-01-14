@@ -1,4 +1,5 @@
-"""
-API package initialization.
-"""
-# The API namespaces are imported and registered in app/__init__.py
+from flask import Blueprint
+
+bp = Blueprint('api', __name__)
+
+from . import analysis, tracks  # noqa

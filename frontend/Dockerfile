@@ -1,26 +1,47 @@
-FROM node:18-alpine as build
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy source code
+# Copy source code and config files
 COPY . .
 
-# Build the app
+# Build application
+ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
-# Production environment
-FROM nginx:alpine
+# Production image
+FROM node:18-alpine AS runner
 
-# Copy built assets from builder stage
-COPY --from=build /app/build /usr/share/nginx/html
+WORKDIR /app
 
-# Copy nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
 
-EXPOSE 80
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy built assets from builder
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/next.config.js ./
+
+# Automatically leverage output traces to reduce image size
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Install production dependencies
+RUN npm install --only=production
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["node", "server.js"]
