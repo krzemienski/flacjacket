@@ -7,11 +7,15 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libpq-dev \
     gcc \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install scdl from source for latest version
+RUN pip install git+https://github.com/flyingrub/scdl.git
 
 # Copy application code
 COPY . .

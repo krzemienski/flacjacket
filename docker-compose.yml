@@ -44,9 +44,24 @@ services:
     volumes:
       - ./backend:/app
       - backend_uploads:/app/uploads
+      - celery_logs:/var/log/celery
     depends_on:
       - postgres
       - redis
+
+  flower:
+    build: ./backend
+    command: celery -A app.celery flower --port=5555
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    volumes:
+      - flower_data:/data
+    depends_on:
+      - redis
+      - celery_worker
 
   frontend:
     build: ./frontend
@@ -60,3 +75,5 @@ services:
 volumes:
   postgres_data:
   backend_uploads:
+  celery_logs:
+  flower_data:

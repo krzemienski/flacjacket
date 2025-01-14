@@ -10,6 +10,7 @@ FlacJacket is a web application that analyzes long audio files (like DJ mixes an
 - Track metadata display
 - High-quality track downloads
 - Real-time analysis status updates
+- Task monitoring dashboard
 
 ## Tech Stack
 
@@ -17,24 +18,48 @@ FlacJacket is a web application that analyzes long audio files (like DJ mixes an
 - Flask (Python web framework)
 - SQLAlchemy (Database ORM)
 - Celery (Async task processing)
-- yt-dlp (YouTube/SoundCloud downloading)
+- yt-dlp (YouTube downloading)
+- scdl (SoundCloud downloading)
 - librosa (Audio processing)
+- PostgreSQL (Database)
+- Redis (Message broker)
+- Flower (Celery monitoring)
+- Structlog (Structured logging)
 
 ### Frontend
 - Next.js 14
 - TypeScript
 - Tailwind CSS
-- Axios for API calls
+- Material-UI components
+- React Hooks for state management
 
 ## Setup
 
 ### Prerequisites
-- Python 3.8+
-- Node.js 18+
-- Redis (for Celery)
-- PostgreSQL (recommended) or SQLite
+- Docker and Docker Compose
+- Git
 
-### Backend Setup
+### Quick Start with Docker
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/flacjacket.git
+cd flacjacket
+```
+
+2. Start the application:
+```bash
+docker compose up -d
+```
+
+The services will be available at:
+- Frontend: http://localhost:3003
+- Backend API: http://localhost:5001
+- Task Monitor: http://localhost:5555
+
+### Manual Development Setup
+
+#### Backend Setup
 
 1. Create a Python virtual environment:
 ```bash
@@ -69,7 +94,12 @@ flask run
 celery -A app.celery worker --loglevel=info
 ```
 
-### Frontend Setup
+7. Start Flower monitoring (optional):
+```bash
+celery -A app.celery flower
+```
+
+#### Frontend Setup
 
 1. Install dependencies:
 ```bash
@@ -82,15 +112,47 @@ npm install
 npm run dev
 ```
 
-The application will be available at http://localhost:3000
-
 ## API Endpoints
 
-- `POST /api/analyze` - Start a new analysis
+### Analysis
+- `POST /api/analysis` - Start a new analysis
+  ```json
+  {
+    "url": "https://soundcloud.com/example/track"
+  }
+  ```
 - `GET /api/analysis/:id` - Get analysis status and results
-- `GET /api/analysis` - List all analyses
-- `GET /api/tracks/:id` - Get track details
-- `GET /api/tracks/:id/download` - Download a track
+- `GET /api/analyses` - List all analyses
+- `DELETE /api/analysis/:id` - Delete an analysis
+
+### Health Check
+- `GET /api/health` - Check API health status
+
+## Architecture
+
+The application is composed of several Docker containers:
+- `frontend`: Next.js web application
+- `backend`: Flask API server
+- `celery_worker`: Async task processor for audio analysis
+- `postgres`: PostgreSQL database
+- `redis`: Message broker for Celery
+- `flower`: Celery task monitoring dashboard
+
+### Monitoring and Logging
+
+The application includes comprehensive monitoring and logging:
+
+1. **Task Monitor Dashboard**
+   - Access at http://localhost:5555
+   - Real-time task status and progress
+   - Historical task data and statistics
+   - Worker status and resource usage
+
+2. **Structured Logging**
+   - Detailed task execution logs
+   - Error tracking and debugging information
+   - Performance metrics
+   - Audit trail for all operations
 
 ## Contributing
 
