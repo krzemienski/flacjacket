@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - backend_uploads:/app/uploads
@@ -41,6 +42,7 @@ services:
       DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - backend_uploads:/app/uploads

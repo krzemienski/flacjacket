@@ -91,15 +91,37 @@ def analyze_audio(file_path):
         # Use onset times to segment the audio
         log.info('segmenting_audio')
         segments = []
-        for i in range(len(onset_times) - 1):
-            start_time = onset_times[i]
-            end_time = onset_times[i + 1]
-            if end_time - start_time > 30:  # Only consider segments longer than 30 seconds
-                segments.append({
-                    'start_time': float(start_time),
-                    'end_time': float(end_time),
-                    'confidence': 0.8  # Placeholder confidence
-                })
+        min_duration = 5  # Minimum segment duration in seconds
+        
+        # If no onsets detected, treat the whole file as one segment
+        if len(onset_times) == 0:
+            duration = librosa.get_duration(y=y, sr=sr)
+            segments.append({
+                'start_time': 0.0,
+                'end_time': float(duration),
+                'confidence': 0.9
+            })
+        else:
+            for i in range(len(onset_times) - 1):
+                start_time = onset_times[i]
+                end_time = onset_times[i + 1]
+                if end_time - start_time >= min_duration:
+                    segments.append({
+                        'start_time': float(start_time),
+                        'end_time': float(end_time),
+                        'confidence': 0.8
+                    })
+            
+            # Handle the last segment to the end of the file
+            if len(onset_times) > 0:
+                last_onset = onset_times[-1]
+                duration = librosa.get_duration(y=y, sr=sr)
+                if duration - last_onset >= min_duration:
+                    segments.append({
+                        'start_time': float(last_onset),
+                        'end_time': float(duration),
+                        'confidence': 0.8
+                    })
         
         log.info('analysis_complete', segments_count=len(segments))
         return segments
