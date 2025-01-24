@@ -18,5 +18,5 @@ def download_track(track_id):
     return send_file(
         track.file_path,
         as_attachment=True,
-        download_name=f"{track.artist} - {track.title}.flac"
+        download_name=f"track_{track.id}_{track.track_type}.wav"
     )

@@ -1,16 +1,21 @@
-version: '3.8'
+version: '3'
 
 services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: flacjacket
-      POSTGRES_USER: flacjacket
-      POSTGRES_PASSWORD: flacjacket
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - POSTGRES_USER=flacjacket
+      - POSTGRES_PASSWORD=flacjacket
+      - POSTGRES_DB=flacjacket
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flacjacket"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -19,63 +24,56 @@ services:
 
   backend:
     build: ./backend
-    environment:
-      FLASK_APP: app
-      FLASK_ENV: production
-      DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      PYTHONPATH: /app
+    command: >
+      bash -c "flask db upgrade &&
+              gunicorn --bind 0.0.0.0:5000 --workers 4 'app:create_app()'"
     volumes:
       - ./backend:/app
       - backend_uploads:/app/uploads
     ports:
       - "5001:5000"
+    environment:
+      - FLASK_APP=app
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://flacjacket:flacjacket@postgres/flacjacket
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   celery_worker:
     build: ./backend
-    command: celery -A app.celery worker --loglevel=info
-    environment:
-      DATABASE_URL: postgresql://flacjacket:flacjacket@postgres/flacjacket
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      PYTHONPATH: /app
+    command: celery -A app.tasks worker --loglevel=info
     volumes:
       - ./backend:/app
       - backend_uploads:/app/uploads
-      - celery_logs:/var/log/celery
-    depends_on:
-      - postgres
-      - redis
-
-  flower:
-    build: ./backend
-    command: celery -A app.celery flower --port=5555
     environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-    ports:
-      - "5555:5555"
-    volumes:
-      - flower_data:/data
+      - DATABASE_URL=postgresql://flacjacket:flacjacket@postgres/flacjacket
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app
     depends_on:
-      - redis
-      - celery_worker
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   frontend:
     build: ./frontend
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:5001
     ports:
-      - "3003:3000"
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001
     depends_on:
       - backend
 
 volumes:
   postgres_data:
   backend_uploads:
-  celery_logs:
-  flower_data:

@@ -6,7 +6,8 @@ from app.extensions import db
 from app.models import Analysis, Track
 from app.tasks import process_audio_url
 
-SOUNDCLOUD_URL = "https://soundcloud.com/igormarijuan/igor-marijuan-live-from-no-more-snow-at-the-commune-phuket-thailand"
+# Test URL from SoundCloud - using just one for now to debug
+SOUNDCLOUD_URL = "https://soundcloud.com/sparrowandbarbossa/maggies1"
 
 @pytest.fixture
 def app():
@@ -30,8 +31,8 @@ def test_soundcloud_track_analysis(app, client, caplog):
     This test:
     1. Creates an analysis record
     2. Processes the audio using real SoundCloud URL
-    3. Verifies track detection
-    4. Checks logging output
+    3. Verifies track detection and properties
+    4. Validates logging output for each stage
     """
     with app.app_context():
         # Create analysis record
@@ -47,6 +48,7 @@ def test_soundcloud_track_analysis(app, client, caplog):
         
         # Verify analysis completed successfully
         assert analysis.status == 'completed', f"Analysis failed with error: {analysis.error_message}"
+        assert analysis.duration > 0, "Processing duration not recorded"
         
         # Get detected tracks
         tracks = Track.query.filter_by(analysis_id=analysis.id).all()
@@ -54,25 +56,55 @@ def test_soundcloud_track_analysis(app, client, caplog):
         # Basic validation of track detection
         assert len(tracks) > 0, "No tracks were detected"
         
+        # Print analysis summary
+        print(f"\nAnalysis Summary for {SOUNDCLOUD_URL}:")
+        print(f"Total processing time: {analysis.duration:.2f} seconds")
+        print(f"Number of tracks detected: {len(tracks)}")
+        
         # Verify track properties
+        total_duration = 0
         for track in tracks:
             assert track.start_time >= 0, "Invalid start time"
             assert track.end_time > track.start_time, "Invalid end time"
             assert track.confidence > 0, "Invalid confidence score"
+            assert track.track_type in ['full_track', 'onset_based', 'final_segment'], "Invalid track type"
+            
+            duration = track.end_time - track.start_time
+            total_duration += duration
             
             # Log track information
-            print(f"Track {track.id}:")
+            print(f"\nTrack {track.id}:")
+            print(f"  Type: {track.track_type}")
             print(f"  Start time: {track.start_time:.2f}s")
             print(f"  End time: {track.end_time:.2f}s")
-            print(f"  Duration: {(track.end_time - track.start_time):.2f}s")
-            print(f"  Confidence: {track.confidence}")
+            print(f"  Duration: {duration:.2f}s")
+            print(f"  Confidence: {track.confidence:.2f}")
         
-        # Verify logging output
-        assert "starting_audio_download" in caplog.text, "Download start not logged"
-        assert "using_soundcloud_downloader" in caplog.text, "SoundCloud downloader not used"
-        assert "soundcloud_download_complete" in caplog.text, "Download completion not logged"
-        assert "starting_audio_analysis" in caplog.text, "Analysis start not logged"
-        assert "analysis_complete" in caplog.text, "Analysis completion not logged"
+        print(f"\nTotal audio duration: {total_duration:.2f}s")
+        
+        # Verify essential logging stages
+        expected_logs = [
+            'starting_audio_processing',
+            'created_temp_directory',
+            'downloading_audio',
+            'downloading_track',
+            'scdl_output',
+            'soundcloud_download_complete',
+            'converting_to_wav',
+            'wav_conversion_complete',
+            'cleanup_complete',
+            'starting_audio_analysis',
+            'audio_file_loaded',
+            'performing_onset_detection',
+            'onset_detection_complete',
+            'segmenting_audio',
+            'analysis_complete',
+            'creating_track_entries',
+            'processing_completed'
+        ]
+        
+        for log_event in expected_logs:
+            assert log_event in caplog.text, f"Missing log event: {log_event}"
 
 def test_soundcloud_track_analysis_api(client):
     """
@@ -82,7 +114,7 @@ def test_soundcloud_track_analysis_api(client):
     response = client.post('/api/analysis', json={
         'url': SOUNDCLOUD_URL
     })
-    assert response.status_code == 202  # Changed from 201 to 202 for async operation
+    assert response.status_code == 202  # Expect 202 Accepted for async operation
     data = response.get_json()
     analysis_id = data['id']
     
@@ -100,10 +132,11 @@ def test_soundcloud_track_analysis_api(client):
             print(f"\nDetected {len(data['tracks'])} tracks:")
             for track in data['tracks']:
                 print(f"Track {track['id']}:")
+                print(f"  Type: {track['track_type']}")
                 print(f"  Start time: {track['start_time']:.2f}s")
                 print(f"  End time: {track['end_time']:.2f}s")
                 print(f"  Duration: {(track['end_time'] - track['start_time']):.2f}s")
-                print(f"  Confidence: {track['confidence']}")
+                print(f"  Confidence: {track['confidence']:.2f}")
             return
         
         time.sleep(5)  # Wait before polling again

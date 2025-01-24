@@ -43,7 +43,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = response.headers.get('content-disposition')?.split('filename=')[1] || 'track.flac';
+      a.download = response.headers.get('content-disposition')?.split('filename=')[1] || 'track.wav';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -69,19 +69,37 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
     );
   }
 
+  const getTrackTypeColor = (type: string) => {
+    switch (type) {
+      case 'full_track':
+        return 'bg-purple-100 text-purple-800';
+      case 'onset_based':
+        return 'bg-blue-100 text-blue-800';
+      case 'final_segment':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   return (
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-2xl font-bold mb-4">Analysis Details</h2>
       
       <div className="mb-6">
         <p className="text-gray-600">URL: {analysis.url}</p>
-        <div className="mt-2">
+        <div className="mt-2 flex items-center space-x-4">
           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
             ${analysis.status === 'completed' ? 'bg-green-100 text-green-800' :
               analysis.status === 'failed' ? 'bg-red-100 text-red-800' :
               'bg-yellow-100 text-yellow-800'}`}>
             {analysis.status}
           </span>
+          {analysis.duration && (
+            <span className="text-sm text-gray-500">
+              Processed in {Math.round(analysis.duration)}s
+            </span>
+          )}
         </div>
       </div>
 
@@ -101,12 +119,14 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
           >
             <div className="flex justify-between items-start">
               <div>
-                <h4 className="font-medium">{track.title || 'Unknown Track'}</h4>
-                {track.artist && (
-                  <p className="text-gray-600">Artist: {track.artist}</p>
-                )}
+                <div className="flex items-center space-x-2 mb-2">
+                  <h4 className="font-medium">{track.title}</h4>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTrackTypeColor(track.track_type)}`}>
+                    {track.track_type}
+                  </span>
+                </div>
                 <p className="text-gray-600">
-                  Duration: {Math.round(track.duration)}s ({Math.round(track.start_time)}s - {Math.round(track.end_time)}s)
+                  Duration: {Math.round(track.end_time - track.start_time)}s ({Math.round(track.start_time)}s - {Math.round(track.end_time)}s)
                 </p>
                 <p className="text-gray-600">
                   Confidence: {Math.round(track.confidence * 100)}%

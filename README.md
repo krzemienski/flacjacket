@@ -12,6 +12,26 @@ FlacJacket is a web application that analyzes long audio files (like DJ mixes an
 - Real-time analysis status updates
 - Task monitoring dashboard
 
+## Track Detection
+
+The system uses advanced audio analysis to detect individual tracks within a mix:
+
+1. **Download Phase**
+   - Downloads audio from SoundCloud using `scdl`
+   - Converts to WAV format for analysis
+   - Logs file sizes and conversion details
+
+2. **Analysis Phase**
+   - Uses `librosa` for audio processing
+   - Detects onsets (significant changes in audio)
+   - Creates segments based on detected onsets
+   - Assigns confidence scores based on segment duration
+
+3. **Track Types**
+   - `full_track`: When no clear segments are detected
+   - `onset_based`: Segments detected between onsets
+   - `final_segment`: Last segment to end of file
+
 ## Tech Stack
 
 ### Backend
@@ -33,13 +53,7 @@ FlacJacket is a web application that analyzes long audio files (like DJ mixes an
 - Material-UI components
 - React Hooks for state management
 
-## Setup
-
-### Prerequisites
-- Docker and Docker Compose
-- Git
-
-### Quick Start with Docker
+## Quick Start
 
 1. Clone the repository:
 ```bash
@@ -47,69 +61,93 @@ git clone https://github.com/yourusername/flacjacket.git
 cd flacjacket
 ```
 
-2. Start the application:
+2. Start the application using Docker Compose:
 ```bash
-docker compose up -d
+docker compose up --build
 ```
 
-The services will be available at:
-- Frontend: http://localhost:3003
+That's it! The application will:
+- Build all necessary containers
+- Initialize the PostgreSQL database
+- Automatically apply any pending migrations
+- Start the Flask backend, Celery worker, and React frontend
+
+The application will be available at:
+- Frontend: http://localhost:3000
 - Backend API: http://localhost:5001
-- Task Monitor: http://localhost:5555
 
-### Manual Development Setup
+## Services
 
-#### Backend Setup
+The application consists of several services that run in Docker containers:
 
-1. Create a Python virtual environment:
+1. **Frontend (Next.js)**
+   - Port: 3000
+   - Development server with hot-reloading
+   - Communicates with backend API
+   - Modern UI with real-time updates
+
+2. **Backend (Flask)**
+   - Port: 5001
+   - RESTful API endpoints
+   - Handles audio analysis requests
+   - Manages database operations
+   - Coordinates with Celery worker
+
+3. **PostgreSQL**
+   - Port: 5432
+   - Stores analysis results and track data
+   - Persistent volume for data storage
+   - Automatic health checks
+
+4. **Redis**
+   - Port: 6379
+   - Message broker for Celery
+   - Task queue management
+   - Result backend storage
+
+5. **Celery Worker**
+   - Processes audio analysis tasks
+   - Handles long-running operations
+   - Manages file downloads and processing
+   - Updates task status in real-time
+
+## Development
+
+### Database Migrations
+
+The database migrations are handled automatically when the application starts. However, if you need to manage migrations manually:
+
+1. Create a new migration:
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+docker compose exec backend flask db migrate -m "Description of changes"
 ```
 
-2. Install dependencies:
+2. Apply migrations manually:
 ```bash
-pip install -r requirements.txt
+docker compose exec backend flask db upgrade
 ```
 
-3. Set up environment variables:
+3. Revert migrations:
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+docker compose exec backend flask db downgrade
 ```
 
-4. Initialize the database:
-```bash
-flask db upgrade
+## Testing
+
+The project includes comprehensive tests using real SoundCloud URLs:
+
+```python
+SOUNDCLOUD_URLS = [
+    "https://soundcloud.com/soundnightclub/sparrow-barbossa-live-at-sound-on-031624",
+    "https://soundcloud.com/sweetmusicofc/sweet-mixtape-135-sparrow-barbossa",
+    "https://soundcloud.com/sparrowandbarbossa/maggies1"
+]
 ```
 
-5. Start the Flask development server:
-```bash
-flask run
-```
+Run tests with:
 
-6. Start Celery worker:
 ```bash
-celery -A app.celery worker --loglevel=info
-```
-
-7. Start Flower monitoring (optional):
-```bash
-celery -A app.celery flower
-```
-
-#### Frontend Setup
-
-1. Install dependencies:
-```bash
-cd frontend
-npm install
-```
-
-2. Start the development server:
-```bash
-npm run dev
+docker compose exec backend pytest tests/test_audio_analysis.py -v
 ```
 
 ## API Endpoints
@@ -127,6 +165,20 @@ npm run dev
 
 ### Health Check
 - `GET /api/health` - Check API health status
+
+## API Usage
+
+1. Start analysis:
+```bash
+curl -X POST -H "Content-Type: application/json" \
+     -d '{"url":"https://soundcloud.com/your-url"}' \
+     http://localhost:5001/api/analysis
+```
+
+2. Check status:
+```bash
+curl http://localhost:5001/api/analysis/{analysis_id}
+```
 
 ## Architecture
 
@@ -154,13 +206,34 @@ The application includes comprehensive monitoring and logging:
    - Performance metrics
    - Audit trail for all operations
 
+## Logging
+
+The system provides detailed logging at every stage:
+
+1. **Download Stage**
+   - Track info fetching
+   - Download progress
+   - File sizes (MP3 and WAV)
+   - Conversion details
+
+2. **Analysis Stage**
+   - Audio file properties
+   - Onset detection results
+   - Segment creation
+   - Confidence calculations
+
+3. **Processing Stage**
+   - Database updates
+   - Track entry creation
+   - Processing duration
+
 ## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create your feature branch
+3. Add tests for any new functionality
+4. Ensure all tests pass
+5. Submit a pull request
 
 ## License
 
