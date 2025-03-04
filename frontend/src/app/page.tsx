@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AnalysisList from '@/components/AnalysisList';
+import Card from '@/components/Card';
+import Input from '@/components/Input';
+import Button from '@/components/Button';
+import { Search, Link as LinkIcon } from '@mui/icons-material';
 
 export default function Home() {
   const [url, setUrl] = useState('');
@@ -38,36 +42,35 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-2xl font-bold mb-4">Analyze Audio</h2>
+    <div className="space-y-8 fade-in">
+      <Card title="Analyze Audio" elevation={2} className="transition-all hover:elevation-3">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="url" className="block text-sm font-medium text-gray-700">
-              SoundCloud or YouTube URL
-            </label>
-            <input
-              type="url"
-              id="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              required
-              disabled={loading}
-            />
-          </div>
-          {error && (
-            <div className="text-red-600 text-sm">{error}</div>
-          )}
-          <button
-            type="submit"
+          <Input
+            label="SoundCloud or YouTube URL"
+            id="url"
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Enter a SoundCloud or YouTube URL"
+            fullWidth
+            required
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            startAdornment={<LinkIcon className="text-gray-400" />}
+            error={!!error}
+            helperText={error || "Enter the URL of a SoundCloud or YouTube audio file to analyze"}
+          />
+          
+          <Button 
+            type="submit"
+            fullWidth
+            disabled={loading}
+            loading={loading}
+            startIcon={<Search />}
           >
             {loading ? 'Processing...' : 'Start Analysis'}
-          </button>
+          </Button>
         </form>
-      </div>
+      </Card>
 
       <AnalysisList />
     </div>

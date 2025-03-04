@@ -22,94 +22,76 @@ def download_audio(url, output_path):
     log = logger.bind(url=url, output_path=output_path)
     log.info('starting_audio_download')
     
-    if is_soundcloud_url(url):
-        log.info('using_soundcloud_downloader')
-        try:
-            # Download track with scdl
-            log.info('downloading_track')
-            result = subprocess.run([
-                'scdl',
-                '-l', url,
-                '--path', os.path.dirname(output_path),
-                '--onlymp3'
-            ], capture_output=True, text=True)
-            
-            log.info('scdl_output', 
-                    stdout=result.stdout,
-                    stderr=result.stderr)
-            
-            # Check if the file was downloaded - look for any .mp3 file
-            mp3_files = [f for f in os.listdir(os.path.dirname(output_path)) if f.endswith('.mp3')]
-            if not mp3_files:
-                log.error('mp3_file_not_found', 
-                         dir_path=os.path.dirname(output_path),
-                         dir_contents=os.listdir(os.path.dirname(output_path)))
-                raise Exception("No MP3 file found after download")
-            
-            # Use the first MP3 file found
-            mp3_path = os.path.join(os.path.dirname(output_path), mp3_files[0])
-            mp3_size = os.path.getsize(mp3_path)
-            log.info('soundcloud_download_complete', 
-                    file_path=mp3_path,
-                    file_size_bytes=mp3_size)
-            
-            # Convert downloaded MP3 to WAV using ffmpeg
-            wav_path = output_path + '.wav'
-            log.info('converting_to_wav')
-            result = subprocess.run([
-                'ffmpeg',
-                '-i', mp3_path,
-                '-acodec', 'pcm_s16le',
-                '-ar', '44100',
-                wav_path
-            ], capture_output=True, text=True)
-            
-            if not os.path.exists(wav_path):
-                log.error('wav_file_not_found', 
-                         expected_path=wav_path,
-                         dir_contents=os.listdir(os.path.dirname(output_path)))
-                raise Exception(f"WAV file not found at {wav_path}")
-            
-            wav_size = os.path.getsize(wav_path)
-            log.info('wav_conversion_complete', 
-                    input_size_bytes=mp3_size,
-                    output_size_bytes=wav_size,
-                    conversion_log=result.stderr)
-            
-            # Remove the MP3 file
-            os.remove(mp3_path)
-            log.info('cleanup_complete', removed_file=mp3_path)
-            
-        except subprocess.CalledProcessError as e:
-            log.error('soundcloud_download_failed', 
-                     error=str(e),
-                     stdout=e.stdout if hasattr(e, 'stdout') else None,
-                     stderr=e.stderr if hasattr(e, 'stderr') else None)
-            raise Exception(f"Failed to download from SoundCloud: {str(e)}")
-        except Exception as e:
-            log.error('unexpected_error',
-                     error=str(e),
-                     error_type=type(e).__name__)
-            raise
-    else:
-        log.info('using_youtube_downloader')
-        # Use yt-dlp for other URLs (YouTube, etc.)
+    # Create a temporary directory for the download
+    temp_dir = os.path.dirname(output_path)
+    
+    try:
+        log.info('downloading_track_with_ytdlp')
+        # Configure yt-dlp options
         ydl_opts = {
             'format': 'bestaudio/best',
-            'outtmpl': output_path,
+            'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'wav',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
             }],
-            'logger': logger.bind(context='yt-dlp'),
+            'quiet': True,
+            'no_warnings': True,
         }
+        
+        # Download using yt-dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            try:
-                ydl.download([url])
-                log.info('youtube_download_complete')
-            except Exception as e:
-                log.error('youtube_download_failed', error=str(e))
-                raise Exception(f"Failed to download from YouTube: {str(e)}")
+            ydl.download([url])
+        
+        # Check if the file was downloaded - look for any .mp3 file
+        mp3_files = [f for f in os.listdir(temp_dir) if f.endswith('.mp3')]
+        if not mp3_files:
+            log.error('mp3_file_not_found', 
+                     dir_path=temp_dir,
+                     dir_contents=os.listdir(temp_dir))
+            raise Exception("No MP3 file found after download")
+        
+        # Use the first MP3 file found
+        mp3_path = os.path.join(temp_dir, mp3_files[0])
+        mp3_size = os.path.getsize(mp3_path)
+        
+        log.info('mp3_file_found', 
+                mp3_path=mp3_path, 
+                mp3_size=mp3_size)
+        
+        # Convert downloaded MP3 to WAV using ffmpeg
+        wav_path = output_path + '.wav'
+        log.info('converting_to_wav')
+        result = subprocess.run([
+            'ffmpeg',
+            '-i', mp3_path,
+            '-acodec', 'pcm_s16le',
+            '-ar', '44100',
+            wav_path
+        ], capture_output=True, text=True)
+        
+        if not os.path.exists(wav_path):
+            log.error('wav_file_not_found', 
+                     expected_path=wav_path,
+                     dir_contents=os.listdir(os.path.dirname(output_path)))
+            raise Exception(f"WAV file not found at {wav_path}")
+        
+        wav_size = os.path.getsize(wav_path)
+        log.info('wav_conversion_complete', 
+                input_size_bytes=mp3_size,
+                output_size_bytes=wav_size,
+                conversion_log=result.stderr)
+        
+        # Remove the MP3 file
+        os.remove(mp3_path)
+        log.info('cleanup_complete', removed_file=mp3_path)
+        
+        # Return the path to the downloaded file
+        return wav_path
+    except Exception as e:
+        log.error('download_error', error=str(e), error_type=type(e).__name__)
+        raise
 
 def analyze_audio(file_path):
     log = logger.bind(file_path=file_path)
@@ -256,17 +238,17 @@ def process_audio_url(self, analysis_id):
                 # Download the audio
                 output_path = os.path.join(temp_dir, 'audio')
                 log.info('downloading_audio')
-                download_audio(analysis.url, output_path)
+                wav_path = download_audio(analysis.url, output_path)
                 
                 # Update task state
                 self.update_state(state='ANALYZING')
                 
                 # Analyze the audio file
                 log.info('analyzing_audio')
-                segments = analyze_audio(output_path + '.wav')
+                segments = analyze_audio(wav_path)
                 
                 # Process segments
-                process_segments(analysis_id, segments, output_path + '.wav')
+                process_segments(analysis_id, segments, wav_path)
                 
                 analysis.status = 'completed'
                 analysis.completed_at = datetime.utcnow()

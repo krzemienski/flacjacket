@@ -7,7 +7,94 @@
   --background-rgb: 243, 244, 246;
 }
 
+.dark {
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 18, 18, 18;
+}
+
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
+  min-height: 100vh;
+}
+
+@layer base {
+  .light-mode .card {
+    @apply bg-card-light shadow-lg;
+  }
+  
+  .dark-mode .card {
+    @apply bg-card-dark shadow-md;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50;
+  }
+  
+  .btn-primary.dark-mode {
+    @apply bg-primary-500 hover:bg-primary-600 focus:ring-primary-400;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary-600 hover:bg-secondary-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2 disabled:opacity-50;
+  }
+  
+  .btn-secondary.dark-mode {
+    @apply bg-secondary-500 hover:bg-secondary-600 focus:ring-secondary-400;
+  }
+  
+  .input-field {
+    @apply block w-full rounded-md shadow-sm px-3 py-2 border border-gray-300 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition-colors;
+  }
+  
+  .input-field.dark-mode {
+    @apply border-gray-700 bg-surface-dark text-white placeholder-gray-500 focus:ring-primary-400 focus:border-primary-400;
+  }
+  
+  .label {
+    @apply block text-sm font-medium mb-1 text-text-primary-light;
+  }
+  
+  .label.dark-mode {
+    @apply text-text-primary-dark;
+  }
+}
+
+/* Material Design Elements */
+.elevation-1 {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+}
+
+.elevation-2 {
+  box-shadow: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+}
+
+.elevation-3 {
+  box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23);
+}
+
+.dark .elevation-1 {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.24), 0 1px 2px rgba(0,0,0,0.48);
+}
+
+.dark .elevation-2 {
+  box-shadow: 0 3px 6px rgba(0,0,0,0.32), 0 3px 6px rgba(0,0,0,0.46);
+}
+
+.dark .elevation-3 {
+  box-shadow: 0 10px 20px rgba(0,0,0,0.38), 0 6px 6px rgba(0,0,0,0.46);
+}
+
+/* Transitions */
+.page-transition {
+  transition: all 0.3s ease;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }

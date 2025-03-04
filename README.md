@@ -111,6 +111,40 @@ The application consists of several services that run in Docker containers:
    - Manages file downloads and processing
    - Updates task status in real-time
 
+## Usage
+
+To analyze an audio track, simply:
+
+1. Visit the FlacJacket website
+2. Paste a SoundCloud URL in the input field
+3. Click the "Analyze" button
+4. Wait for the analysis to complete
+5. View the detailed track breakdown and metadata
+
+### Supported URL Types
+
+FlacJacket currently supports:
+
+- SoundCloud URLs (e.g., `https://soundcloud.com/username/track-name`)
+
+Here are some test URLs that work well with FlacJacket:
+
+```
+https://soundcloud.com/sparrowandbarbossa/maggies1
+https://soundcloud.com/soundnightclub/sparrow-barbossa-live-at-sound-on-031624
+https://soundcloud.com/sweetmusicofc/sweet-mixtape-135-sparrow-barbossa
+```
+
+### Track Analysis
+
+The backend uses advanced audio processing techniques to:
+
+1. Download audio from the provided URL
+2. Analyze the waveform to detect potential transitions
+3. Identify individual tracks based on onset detection
+4. Calculate confidence scores for each track
+5. Return detailed metadata about the detected tracks
+
 ## Development
 
 ### Database Migrations

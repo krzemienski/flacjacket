@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { Analysis } from '@/types';
+import Card from '@/components/Card';
+import Button from '@/components/Button';
+import TrackItem from '@/components/TrackItem';
+import { ArrowBack, ErrorOutline, GetApp, MusicNote } from '@mui/icons-material';
+import Link from 'next/link';
 
 export default function AnalysisPage({ params }: { params: { id: string } }) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState('');
+  const [downloadingTrackId, setDownloadingTrackId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchAnalysis = async () => {
@@ -33,6 +39,7 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
   }, [params.id, analysis?.status]);
 
   const handleDownload = async (trackId: number) => {
+    setDownloadingTrackId(trackId);
     try {
       const response = await fetch(`/api/tracks/${trackId}/download`);
       if (!response.ok) {
@@ -50,99 +57,146 @@ export default function AnalysisPage({ params }: { params: { id: string } }) {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to download track:', err);
+    } finally {
+      setDownloadingTrackId(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!analysis || analysis.tracks.length === 0) return;
+    
+    // Sequential downloads to avoid overwhelming the browser
+    for (const track of analysis.tracks) {
+      await handleDownload(track.id);
     }
   };
 
   if (error) {
     return (
-      <div className="text-red-600">
-        {error}
-      </div>
+      <Card elevation={2} className="text-center py-8">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <ErrorOutline className="text-6xl text-error-light dark:text-error-dark" />
+          <h3 className="text-xl font-medium text-gray-900 dark:text-white">{error}</h3>
+          <Link href="/">
+            <Button startIcon={<ArrowBack />} variant="primary">
+              Back to Home
+            </Button>
+          </Link>
+        </div>
+      </Card>
     );
   }
 
   if (!analysis) {
     return (
-      <div className="flex justify-center items-center h-32">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600 dark:border-primary-400"></div>
       </div>
     );
   }
 
-  const getTrackTypeColor = (type: string) => {
-    switch (type) {
-      case 'full_track':
-        return 'bg-purple-100 text-purple-800';
-      case 'onset_based':
-        return 'bg-blue-100 text-blue-800';
-      case 'final_segment':
-        return 'bg-green-100 text-green-800';
+  const isCompleted = analysis.status === 'completed';
+  const isPending = analysis.status === 'pending' || analysis.status === 'processing';
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-success-light/10 text-success-light dark:bg-success-dark/20 dark:text-success-dark';
+      case 'failed':
+        return 'bg-error-light/10 text-error-light dark:bg-error-dark/20 dark:text-error-dark';
+      case 'processing':
+        return 'bg-primary-600/10 text-primary-600 dark:bg-primary-400/20 dark:text-primary-400';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-warning-light/10 text-warning-light dark:bg-warning-dark/20 dark:text-warning-dark';
     }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-2xl font-bold mb-4">Analysis Details</h2>
-      
-      <div className="mb-6">
-        <p className="text-gray-600">URL: {analysis.url}</p>
-        <div className="mt-2 flex items-center space-x-4">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-            ${analysis.status === 'completed' ? 'bg-green-100 text-green-800' :
-              analysis.status === 'failed' ? 'bg-red-100 text-red-800' :
-              'bg-yellow-100 text-yellow-800'}`}>
-            {analysis.status}
-          </span>
-          {analysis.duration && (
-            <span className="text-sm text-gray-500">
-              Processed in {Math.round(analysis.duration)}s
-            </span>
-          )}
-        </div>
-      </div>
-
-      {analysis.error_message && (
-        <div className="mb-4 p-4 bg-red-50 text-red-600 rounded">
-          Error: {analysis.error_message}
-        </div>
-      )}
-
-      <h3 className="text-xl font-semibold mb-4">Detected Tracks</h3>
-
-      <div className="space-y-4">
-        {analysis.tracks.map((track) => (
-          <div
-            key={track.id}
-            className="border rounded-lg p-4 hover:bg-gray-50"
+    <div className="space-y-6 fade-in">
+      <div className="flex items-center justify-between">
+        <Link href="/" className="text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
+          <ArrowBack fontSize="small" />
+          <span>Back to Home</span>
+        </Link>
+        
+        {isCompleted && analysis.tracks.length > 0 && (
+          <Button 
+            variant="secondary" 
+            startIcon={<GetApp />}
+            onClick={handleDownloadAll}
           >
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center space-x-2 mb-2">
-                  <h4 className="font-medium">{track.title}</h4>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTrackTypeColor(track.track_type)}`}>
-                    {track.track_type}
-                  </span>
-                </div>
-                <p className="text-gray-600">
-                  Duration: {Math.round(track.end_time - track.start_time)}s ({Math.round(track.start_time)}s - {Math.round(track.end_time)}s)
-                </p>
-                <p className="text-gray-600">
-                  Confidence: {Math.round(track.confidence * 100)}%
-                </p>
-              </div>
-              <button
-                onClick={() => handleDownload(track.id)}
-                disabled={analysis.status !== 'completed'}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Download
-              </button>
+            Download All Tracks
+          </Button>
+        )}
+      </div>
+      
+      <Card title="Analysis Details" elevation={2}>
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">Source URL</h3>
+              <p className="text-gray-700 dark:text-gray-300 break-all">{analysis.url}</p>
+            </div>
+            
+            <div className="flex flex-col sm:items-end gap-2">
+              <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(analysis.status)}`}>
+                {analysis.status}
+              </span>
+              
+              {analysis.duration && (
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  Processed in {Math.round(analysis.duration)}s
+                </span>
+              )}
+              
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                Started: {new Date(analysis.created_at).toLocaleString()}
+              </span>
             </div>
           </div>
-        ))}
-      </div>
+          
+          {analysis.error_message && (
+            <div className="p-4 bg-error-light/10 dark:bg-error-dark/10 text-error-light dark:text-error-dark rounded-lg border border-error-light/30 dark:border-error-dark/30">
+              <div className="flex items-start gap-2">
+                <ErrorOutline />
+                <div>
+                  <h4 className="font-medium">Error Occurred</h4>
+                  <p>{analysis.error_message}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card 
+        title={`Detected Tracks ${isPending ? '(Processing...)' : ''}`} 
+        elevation={2}
+      >
+        {isPending && (
+          <div className="flex justify-center items-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 dark:border-primary-400"></div>
+          </div>
+        )}
+        
+        {isCompleted && analysis.tracks.length === 0 && (
+          <div className="py-8 text-center">
+            <MusicNote className="mx-auto text-4xl text-gray-400 dark:text-gray-600 mb-2" />
+            <p className="text-gray-500 dark:text-gray-400">No tracks were detected in this audio.</p>
+          </div>
+        )}
+        
+        <div className="space-y-4">
+          {analysis.tracks.map((track) => (
+            <TrackItem
+              key={track.id}
+              track={track}
+              onDownload={handleDownload}
+              isDownloading={downloadingTrackId === track.id}
+            />
+          ))}
+        </div>
+      </Card>
     </div>
   );
 }

@@ -6,8 +6,12 @@ from app.extensions import db
 from app.models import Analysis, Track
 from app.tasks import process_audio_url
 
-# Test URL from SoundCloud - using just one for now to debug
-SOUNDCLOUD_URL = "https://soundcloud.com/sparrowandbarbossa/maggies1"
+# Test URLs from SoundCloud - using real URLs that work
+SOUNDCLOUD_URLS = [
+    "https://soundcloud.com/sparrowandbarbossa/maggies1",
+    "https://soundcloud.com/soundnightclub/sparrow-barbossa-live-at-sound-on-031624",
+    "https://soundcloud.com/sweetmusicofc/sweet-mixtape-135-sparrow-barbossa"
+]
 
 @pytest.fixture
 def app():
@@ -34,77 +38,78 @@ def test_soundcloud_track_analysis(app, client, caplog):
     3. Verifies track detection and properties
     4. Validates logging output for each stage
     """
-    with app.app_context():
-        # Create analysis record
-        analysis = Analysis(url=SOUNDCLOUD_URL)
-        db.session.add(analysis)
-        db.session.commit()
-        
-        # Process the audio (this will take some time)
-        process_audio_url.apply(args=[analysis.id]).get(timeout=300)  # 5 minute timeout
-        
-        # Refresh the analysis from DB
-        db.session.refresh(analysis)
-        
-        # Verify analysis completed successfully
-        assert analysis.status == 'completed', f"Analysis failed with error: {analysis.error_message}"
-        assert analysis.duration > 0, "Processing duration not recorded"
-        
-        # Get detected tracks
-        tracks = Track.query.filter_by(analysis_id=analysis.id).all()
-        
-        # Basic validation of track detection
-        assert len(tracks) > 0, "No tracks were detected"
-        
-        # Print analysis summary
-        print(f"\nAnalysis Summary for {SOUNDCLOUD_URL}:")
-        print(f"Total processing time: {analysis.duration:.2f} seconds")
-        print(f"Number of tracks detected: {len(tracks)}")
-        
-        # Verify track properties
-        total_duration = 0
-        for track in tracks:
-            assert track.start_time >= 0, "Invalid start time"
-            assert track.end_time > track.start_time, "Invalid end time"
-            assert track.confidence > 0, "Invalid confidence score"
-            assert track.track_type in ['full_track', 'onset_based', 'final_segment'], "Invalid track type"
+    for SOUNDCLOUD_URL in SOUNDCLOUD_URLS:
+        with app.app_context():
+            # Create analysis record
+            analysis = Analysis(url=SOUNDCLOUD_URL)
+            db.session.add(analysis)
+            db.session.commit()
             
-            duration = track.end_time - track.start_time
-            total_duration += duration
+            # Process the audio (this will take some time)
+            process_audio_url.apply(args=[analysis.id]).get(timeout=300)  # 5 minute timeout
             
-            # Log track information
-            print(f"\nTrack {track.id}:")
-            print(f"  Type: {track.track_type}")
-            print(f"  Start time: {track.start_time:.2f}s")
-            print(f"  End time: {track.end_time:.2f}s")
-            print(f"  Duration: {duration:.2f}s")
-            print(f"  Confidence: {track.confidence:.2f}")
-        
-        print(f"\nTotal audio duration: {total_duration:.2f}s")
-        
-        # Verify essential logging stages
-        expected_logs = [
-            'starting_audio_processing',
-            'created_temp_directory',
-            'downloading_audio',
-            'downloading_track',
-            'scdl_output',
-            'soundcloud_download_complete',
-            'converting_to_wav',
-            'wav_conversion_complete',
-            'cleanup_complete',
-            'starting_audio_analysis',
-            'audio_file_loaded',
-            'performing_onset_detection',
-            'onset_detection_complete',
-            'segmenting_audio',
-            'analysis_complete',
-            'creating_track_entries',
-            'processing_completed'
-        ]
-        
-        for log_event in expected_logs:
-            assert log_event in caplog.text, f"Missing log event: {log_event}"
+            # Refresh the analysis from DB
+            db.session.refresh(analysis)
+            
+            # Verify analysis completed successfully
+            assert analysis.status == 'completed', f"Analysis failed with error: {analysis.error_message}"
+            assert analysis.duration > 0, "Processing duration not recorded"
+            
+            # Get detected tracks
+            tracks = Track.query.filter_by(analysis_id=analysis.id).all()
+            
+            # Basic validation of track detection
+            assert len(tracks) > 0, "No tracks were detected"
+            
+            # Print analysis summary
+            print(f"\nAnalysis Summary for {SOUNDCLOUD_URL}:")
+            print(f"Total processing time: {analysis.duration:.2f} seconds")
+            print(f"Number of tracks detected: {len(tracks)}")
+            
+            # Verify track properties
+            total_duration = 0
+            for track in tracks:
+                assert track.start_time >= 0, "Invalid start time"
+                assert track.end_time > track.start_time, "Invalid end time"
+                assert track.confidence > 0, "Invalid confidence score"
+                assert track.track_type in ['full_track', 'onset_based', 'final_segment'], "Invalid track type"
+                
+                duration = track.end_time - track.start_time
+                total_duration += duration
+                
+                # Log track information
+                print(f"\nTrack {track.id}:")
+                print(f"  Type: {track.track_type}")
+                print(f"  Start time: {track.start_time:.2f}s")
+                print(f"  End time: {track.end_time:.2f}s")
+                print(f"  Duration: {duration:.2f}s")
+                print(f"  Confidence: {track.confidence:.2f}")
+            
+            print(f"\nTotal audio duration: {total_duration:.2f}s")
+            
+            # Verify essential logging stages
+            expected_logs = [
+                'starting_audio_processing',
+                'created_temp_directory',
+                'downloading_audio',
+                'downloading_track',
+                'scdl_output',
+                'soundcloud_download_complete',
+                'converting_to_wav',
+                'wav_conversion_complete',
+                'cleanup_complete',
+                'starting_audio_analysis',
+                'audio_file_loaded',
+                'performing_onset_detection',
+                'onset_detection_complete',
+                'segmenting_audio',
+                'analysis_complete',
+                'creating_track_entries',
+                'processing_completed'
+            ]
+            
+            for log_event in expected_logs:
+                assert log_event in caplog.text, f"Missing log event: {log_event}"
 
 def test_soundcloud_track_analysis_api(client):
     """
@@ -112,7 +117,7 @@ def test_soundcloud_track_analysis_api(client):
     """
     # Start analysis
     response = client.post('/api/analysis', json={
-        'url': SOUNDCLOUD_URL
+        'url': SOUNDCLOUD_URLS[0]
     })
     assert response.status_code == 202  # Expect 202 Accepted for async operation
     data = response.get_json()
